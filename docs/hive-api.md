@@ -1,6 +1,6 @@
 # The Hive (Bedrock) Public API — Reference
 
-Research notes for **ninjaTracker**. Everything below was verified live against
+Research notes for **Mossad Tracker**. Everything below was verified live against
 `https://api.playhive.com` on **2026-08-20** (unless marked *unverified*).
 
 Machine-readable spec: [`hive-openapi.json`](./hive-openapi.json) (OpenAPI 3.1, pulled from
@@ -42,7 +42,7 @@ Source: <https://support.playhive.com/api/> and <https://api-updates.playhive.co
 Hive states they are **not accepting API key requests until v2 launches**, and no communication
 about v2/auth is expected before the public release of SkyBlock Horizons. So:
 
-> **ninjaTracker must be designed on anonymous `v0`**, with a clean abstraction layer so that
+> **Mossad Tracker must be designed on anonymous `v0`**, with a clean abstraction layer so that
 > swapping in `v2` + Basic auth later is a one-file change.
 
 ---
@@ -110,7 +110,7 @@ Measured semantics:
 | Is `/v0/global/statistics` limited? | No per-combination limit. |
 | Is `/v0/player/search/{partial}` limited? | No per-combination limit observed. |
 
-### 3.3 Design consequences for ninjaTracker
+### 3.3 Design consequences for Mossad Tracker
 
 1. **One refresh = one `GET /v0/game/all/all/{player}`** (returns every game at once). That gives us
    3 refreshes/hour/player max → an effective **minimum polling interval of 20 minutes** per tracked
@@ -337,11 +337,11 @@ Notable design of v2, worth mirroring in our own internal model:
 
 ---
 
-## 7. Practical client checklist for ninjaTracker
+## 7. Practical client checklist for Mossad Tracker
 
 - [ ] Single HTTP client with: retry/backoff, `Retry-After` handling, global 120/min token bucket,
       per-(player,game) 3/60min cooldown ledger, and an ETag-less TTL cache.
-- [ ] Send a descriptive `User-Agent` (e.g. `ninjaTracker/0.1`) — be identifiable and polite.
+- [ ] Send a descriptive `User-Agent` (e.g. `mossadTracker/0.1`) — be identifiable and polite.
 - [ ] Tracked-player refresh: `all/all/{player}` every ≥20 min; store a snapshot row per fetch.
 - [ ] Deltas/sessions/rate-of-progress computed locally from the snapshot history.
 - [ ] Static caches: `meta/{game}` and `map/{game}` and catalogues 24 h; leaderboards 5–10 min;

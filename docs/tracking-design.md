@@ -1,4 +1,4 @@
-# ninjaTracker — Activity Tracking Design
+# Mossad Tracker — Activity Tracking Design
 
 Goal: **know as precisely as possible when a given player is playing on The Hive**, from a watchlist
 of players, using only the public `v0` API.

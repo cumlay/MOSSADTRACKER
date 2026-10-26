@@ -14,7 +14,7 @@ export function useStream(): StreamState {
   const [pulses, setPulses] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    const source = new EventSource('/api/stream')
+    const source = new EventSource(`${import.meta.env.BASE_URL}api/stream`)
 
     const refresh = (uuid?: string) => {
       void qc.invalidateQueries({ queryKey: ['players'] })
@@ -32,7 +32,14 @@ export function useStream(): StreamState {
       setPulses((p) => ({ ...p, [uuid]: Date.now() }))
       refresh(uuid)
     })
-    source.addEventListener('removed', () => refresh())
+    source.addEventListener('removed', () => {
+      void qc.invalidateQueries({ queryKey: ['me'] })
+      refresh()
+    })
+    source.addEventListener('groups', () => {
+      void qc.invalidateQueries({ queryKey: ['groups'] })
+      refresh()
+    })
     source.onerror = () => setConnected(false)
     source.onopen = () => setConnected(true)
 

@@ -1,5 +1,7 @@
 import { get, run } from './db.ts'
-import { game } from '../shared/games.ts'
+import { getBotSettings } from './settings.ts'
+import { liveCompanions } from './insights.ts'
+import { BRAND, sessionStartEmbed, type Embed } from './embeds.ts'
 
 /**
  * Outbound alerts.
@@ -47,9 +49,45 @@ interface SessionAlert {
   windowEnd: number
 }
 
+/** Discord embed object, shared by the webhook and the bot. */
+export type AlertEmbed = Embed
+
+/**
+ * Where the bot posts — it registers itself here when it connects. A hook rather than
+ * an import: the bot depends on the scheduler, which depends on this file.
+ * `channelId` null means the default alert channel.
+ */
+type AlertSink = (embed: AlertEmbed, channelId: string | null) => Promise<boolean>
+let sink: AlertSink | null = null
+
+export function setAlertSink(next: AlertSink | null): void {
+  sink = next
+}
+
+export function hasAlertSink(): boolean {
+  return sink !== null
+}
+
+/**
+ * Posts through the bot. With a player, their group's channel wins over the default
+ * one, so each clan's alerts can live in their own channel.
+ */
+export async function postAlert(embed: AlertEmbed, uuid: string | null = null): Promise<boolean> {
+  if (!sink) return false
+  const channel = uuid
+    ? (get<{ channel_id: string | null }>(
+        'SELECT g.channel_id FROM players p JOIN player_groups g ON g.id = p.group_id WHERE p.uuid = ?',
+        [uuid]
+      )?.channel_id ?? null)
+    : null
+  return sink(embed, channel).catch(() => false)
+}
+
 export async function notifySessionStart(alert: SessionAlert): Promise<boolean> {
   const settings = getSettings()
-  if (!settings.enabled || !settings.webhook_url) return false
+  const toWebhook = settings.enabled && settings.webhook_url !== ''
+  const toBot = sink !== null && getBotSettings().session_start
+  if (!toWebhook && !toBot) return false
   if (settings.games.length > 0 && !settings.games.includes(alert.gameId)) return false
 
   const player = get<{ username: string; username_cc: string | null; notify: number }>(
@@ -58,28 +96,27 @@ export async function notifySessionStart(alert: SessionAlert): Promise<boolean> 
   )
   if (!player || player.notify === 0) return false
 
-  const name = player.username_cc ?? player.username
-  const info = game(alert.gameId)
-  const clock = (ts: number) => new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  // The session that just opened is the latest; the one before tells how long they were away.
+  const previous = get<{ ended_at: number }>('SELECT ended_at FROM sessions WHERE uuid = ? ORDER BY ended_at DESC LIMIT 1 OFFSET 1', [
+    alert.uuid
+  ])
+  const away = previous ? alert.windowStart - previous.ended_at : null
+  const longAway = away !== null && away >= getBotSettings().inactive_days * 86_400_000 ? away : null
 
-  const body = {
-    username: 'ninjaTracker',
-    embeds: [
-      {
-        title: `${name} is playing`,
-        description: `**${info.name}** · ${alert.matches} match${alert.matches > 1 ? 'es' : ''} detected`,
-        color: parseInt(info.color.slice(1), 16),
-        footer: {
-          // Never imply more precision than the polling interval gives us.
-          text: `between ${clock(alert.windowStart)} and ${clock(alert.windowEnd)}`
-        },
-        timestamp: new Date(alert.windowEnd).toISOString()
-      }
-    ]
-  }
+  const embed = sessionStartEmbed(player.username_cc ?? player.username, alert, {
+    with: liveCompanions(alert.uuid, alert.gameId, alert.windowEnd),
+    backAfterMs: longAway
+  })
+  const sent = await Promise.all([
+    toWebhook ? postWebhook(settings.webhook_url, { username: BRAND, embeds: [embed] }) : false,
+    toBot ? postAlert(embed, alert.uuid) : false
+  ])
+  return sent.some(Boolean)
+}
 
+async function postWebhook(url: string, body: unknown): Promise<boolean> {
   try {
-    const res = await fetch(settings.webhook_url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -99,8 +136,8 @@ export async function sendTestAlert(): Promise<boolean> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: 'ninjaTracker',
-        content: 'Test alert — ninjaTracker can reach this webhook.'
+        username: BRAND,
+        content: `Test alert — ${BRAND} can reach this webhook.`
       })
     })
     return res.ok

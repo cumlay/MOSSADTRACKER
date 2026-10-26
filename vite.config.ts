@@ -6,12 +6,14 @@ const root = import.meta.dirname
 
 export default defineConfig({
   root: resolve(root, 'src/web'),
+  // Mounted at /tracker/ on the corlay site; nginx strips the prefix before the API sees it.
+  base: '/tracker/',
   plugins: [react()],
   css: { postcss: resolve(root, 'postcss.config.js') },
   server: {
     port: 5273,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:3717', changeOrigin: true }
+      '/tracker/api': { target: 'http://127.0.0.1:3717', changeOrigin: true, rewrite: (p) => p.slice('/tracker'.length), headers: { 'X-Tracker-Access': 'full' } }
     }
   },
   build: {

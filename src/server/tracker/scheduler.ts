@@ -5,6 +5,7 @@ import { fetchAll, fetchGame, fetchMain } from '../hive/client.ts'
 import { bucketKey, bucketState, globalUsedLastMinute, pruneLedger } from '../hive/limiter.ts'
 import { hotGamesFor, ingestAll, ingestGame, ingestMain, refreshPlayerState } from './ingest.ts'
 import { notifySessionStart } from '../notifier.ts'
+import { milestones } from '../alerts.ts'
 import type { IngestResult } from './ingest.ts'
 import type { Tier } from '../../shared/types.ts'
 
@@ -35,7 +36,7 @@ function bucketsForTier(tier: Tier, uuid: string): string[] {
 }
 
 function intervalForTier(tier: Tier): number {
-  return tier === 'dormant' ? 60 * 60 * 1000 : INTERVAL
+  return tier === 'dormant' ? config.scheduler.dormantIntervalMs : INTERVAL
 }
 
 function lastFetchAt(bucket: string): number {
@@ -162,8 +163,13 @@ export async function fetchBucket(uuid: string, bucket: string): Promise<{ ok: b
 
 /** Fires outbound alerts for sessions that just opened. Never blocks the fetch loop. */
 async function alert(uuid: string, result: IngestResult): Promise<void> {
-  for (const start of result.sessionStarts) {
-    if (start.matches > 0) await notifySessionStart({ uuid, gameId: start.game, ...start })
+  try {
+    for (const start of result.sessionStarts) {
+      if (start.matches > 0) await notifySessionStart({ uuid, gameId: start.game, ...start })
+    }
+    if (result.changed.length > 0) await milestones(uuid, result.changed)
+  } catch (err) {
+    console.error('[alerts] failed', err)
   }
 }
 

@@ -19,7 +19,7 @@ export const config = {
 
   hive: {
     base: 'https://api.playhive.com',
-    userAgent: 'ninjaTracker/0.1 (+player activity tracker)',
+    userAgent: 'mossadTracker/0.1 (+player activity tracker)',
     /** Documented global cap: 120 requests / minute / IP. We stay under it. */
     globalPerMinute: 100,
     /**
@@ -38,7 +38,8 @@ export const config = {
     /** Activity newer than this promotes a player to the `hot` tier. */
     hotWindowMs: 30 * 60 * 1000,
     warmWindowMs: 24 * 60 * 60 * 1000,
-    dormantAfterMs: 14 * 24 * 60 * 60 * 1000,
+    /** How often dormant players (inactive past the threshold in settings) are checked. */
+    dormantIntervalMs: 2 * 60 * 60 * 1000,
     /** Gap that closes a session. */
     sessionGapMs: 30 * 60 * 1000,
     /** An activity window ending less than this ago means "live". */

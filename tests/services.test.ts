@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const dir = mkdtempSync(join(tmpdir(), 'ninjatracker-svc-'))
+const dir = mkdtempSync(join(tmpdir(), 'mossadtracker-svc-'))
 process.env.DB_PATH = join(dir, 'test.db')
 
 let db: typeof import('../src/server/db.ts')

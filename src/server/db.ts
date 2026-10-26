@@ -134,18 +134,67 @@ CREATE TABLE IF NOT EXISTS meta_cache (
   value      TEXT NOT NULL,
   fetched_at INTEGER NOT NULL
 );
+
+-- Free-text notes staff keep on a player ("main account of X", "check again Friday").
+CREATE TABLE IF NOT EXISTS player_notes (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid       TEXT NOT NULL,
+  author     TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_player ON player_notes (uuid, created_at DESC);
+
+-- Groups (clans, friend groups…): a player belongs to at most one. A group can send its
+-- alerts to its own Discord channel.
+CREATE TABLE IF NOT EXISTS player_groups (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  color      TEXT NOT NULL,
+  channel_id TEXT
+);
+
+-- Who changed the watchlist, from where. Kept forever; it is tiny.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  at          INTEGER NOT NULL,
+  actor       TEXT NOT NULL,
+  source      TEXT NOT NULL,
+  action      TEXT NOT NULL,
+  target_uuid TEXT,
+  target_name TEXT,
+  detail      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log (at DESC);
 `)
 
 /**
  * Tiny forward-only migrations: the schema above uses CREATE TABLE IF NOT EXISTS, which
  * never touches a table that already exists, so new columns are added here instead.
  */
-function addColumn(table: string, column: string, definition: string): void {
+function addColumn(table: string, column: string, definition: string): boolean {
   const existing = db.all(`PRAGMA table_info(${table})`) as Array<{ name: string }>
-  if (!existing.some((c) => c.name === column)) db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  if (existing.some((c) => c.name === column)) return false
+  db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  return true
 }
 
 addColumn('players', 'notify', 'INTEGER NOT NULL DEFAULT 1')
+addColumn('players', 'tags', "TEXT NOT NULL DEFAULT '[]'")
+addColumn('players', 'group_id', 'INTEGER')
+/** Account that added the player — what the per-account add limit counts. */
+addColumn('players', 'added_by', 'TEXT')
+addColumn('game_state', 'win_streak', 'INTEGER NOT NULL DEFAULT 0')
+addColumn('game_state', 'best_streak', 'INTEGER NOT NULL DEFAULT 0')
+
+// Sessions and players that predate these flags count as already announced, or the
+// first sweep after an upgrade would post a summary for every session ever recorded.
+if (addColumn('sessions', 'summary_sent', 'INTEGER NOT NULL DEFAULT 0')) {
+  db.run('UPDATE sessions SET summary_sent = 1')
+}
+if (addColumn('players', 'inactive_notified', 'INTEGER NOT NULL DEFAULT 0')) {
+  db.run('UPDATE players SET inactive_notified = 1 WHERE COALESCE(last_seen_at, added_at) < ?', [Date.now() - 7 * 86_400_000])
+}
 
 type Row = Record<string, unknown>
 

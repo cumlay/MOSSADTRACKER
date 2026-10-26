@@ -34,6 +34,89 @@ export interface PlayerRow extends Player {
   matches_30d: number
   /** Currently running session, if any. */
   session: { started_at: number; matches: number; games: string[] } | null
+  tags: string[]
+  group: Group | null
+  /** Account that added the player (null for players added before this was recorded). */
+  added_by: string | null
+  /** Not seen for longer than the inactivity threshold. */
+  inactive: boolean
+}
+
+export interface Group {
+  id: number
+  name: string
+  color: string
+  /** Discord channel this group's alerts go to; null = the default alert channel. */
+  channel_id: string | null
+}
+
+export interface Note {
+  id: number
+  author: string
+  body: string
+  created_at: number
+}
+
+/** "Usually online 19:00–23:00, mostly Fri and Sat", from the 60-day heatmap. */
+export interface Typical {
+  /** Hours in the server's timezone; `to` is exclusive and may wrap past midnight. */
+  from: number
+  to: number
+  /** Share of observed play inside that window, 0–1. */
+  share: number
+  /** Busiest weekdays, 0 = Monday. */
+  days: number[]
+  timezone: string
+}
+
+export interface PlayedWith {
+  uuid: string
+  username: string
+  /** Sessions that overlapped in time on a shared game. */
+  sessions: number
+  last_at: number
+  games: string[]
+}
+
+export interface TimelineSession extends Session {
+  per_game: Record<string, number>
+}
+
+export interface AuditEntry {
+  id: number
+  at: number
+  actor: string
+  source: 'web' | 'discord' | 'system'
+  action: string
+  target_uuid: string | null
+  target_name: string | null
+  detail: string | null
+}
+
+export interface BotSettings {
+  /** Post when a tracked player starts playing. */
+  session_start: boolean
+  /** Post a summary when a session ends. */
+  session_end: boolean
+  /** Level milestones, prestiges, win streaks. */
+  milestones: boolean
+  /** Post once when someone has not played for `inactive_days`. */
+  inactivity: boolean
+  daily_report: boolean
+  weekly_report: boolean
+  /** Local hour the reports go out at. */
+  report_hour: number
+  inactive_days: number
+  /** How many players a limited (trackerUser) account may have on the watchlist. */
+  user_add_limit: number
+}
+
+export interface Me {
+  access: 'full' | 'user'
+  name: string
+  /** Players this account added that are still tracked, and its limit (limited accounts only). */
+  added: number
+  limit: number | null
 }
 
 export interface ActivityEvent {
@@ -73,7 +156,12 @@ export interface PlayerDetail {
     latest: StatPoint
     delta_24h: Record<string, number> | null
     delta_7d: Record<string, number> | null
+    win_streak: number
+    best_streak: number
   }>
+  notes: Note[]
+  typical: Typical | null
+  played_with: PlayedWith[]
   sessions: Session[]
   events: ActivityEvent[]
   /** 7 x 24 grid of minutes-of-observed-activity, index [weekday][hour], weekday 0 = Monday. */

@@ -6,11 +6,14 @@ import { ago, clock, duration, num, plural, STATUS_META } from '../lib/format.ts
 import { game } from '../../shared/games.ts'
 import { GameTile, StatusPill } from '../components/StatusPill.tsx'
 import { AddPlayer } from '../components/AddPlayer.tsx'
-import { AlertSettings } from '../components/AlertSettings.tsx'
 import { HealthPanel } from '../components/HealthPanel.tsx'
 import { NextFetch } from '../components/NextFetch.tsx'
 import { GameFilter, matchesFilter } from '../components/GameFilter.tsx'
 import { useStream } from '../lib/useStream.ts'
+import { useFullAccess } from '../lib/useAccess.ts'
+import { GroupsPanel } from '../components/GroupsPanel.tsx'
+import { BotSettingsPanel } from '../components/BotSettingsPanel.tsx'
+import { GroupChip, TagChip } from '../components/PlayerExtras.tsx'
 import type { PlayerRow } from '../../shared/types.ts'
 
 type Range = '24h' | '7d' | '30d'
@@ -32,6 +35,9 @@ const SORTS: Array<{ id: Sort; label: string }> = [
 export default function Dashboard() {
   const { pulses } = useStream()
   const { data: players, isLoading } = useQuery({ queryKey: ['players'], queryFn: api.players, refetchInterval: 30_000 })
+  const { data: groups } = useQuery({ queryKey: ['groups'], queryFn: api.groups })
+  const full = useFullAccess()
+  const [group, setGroup] = useState<number | null>(null)
 
   const [range, setRange] = useState<Range>('24h')
   const [sort, setSort] = useState<Sort>('recent')
@@ -50,10 +56,17 @@ export default function Dashboard() {
     localStorage.setItem('ninjatracker.gameFilter', JSON.stringify(next))
   }
 
+  // "#cheater" filters on tags, anything else on names.
   const needle = search.trim().toLowerCase()
+  const tagNeedle = needle.startsWith('#') ? needle.slice(1) : null
   const shown = (players ?? [])
     .filter((p) => matchesFilter(p, selected))
-    .filter((p) => !needle || (p.username_cc ?? p.username).toLowerCase().includes(needle))
+    .filter((p) => group === null || p.group?.id === group)
+    .filter((p) =>
+      tagNeedle !== null
+        ? p.tags.some((t) => t.toLowerCase().includes(tagNeedle))
+        : !needle || (p.username_cc ?? p.username).toLowerCase().includes(needle)
+    )
     .sort((a, b) => {
       if (sort === 'name') return (a.username_cc ?? a.username).localeCompare(b.username_cc ?? b.username)
       if (sort === 'matches') return RANGES.find((r) => r.id === range)!.pick(b) - RANGES.find((r) => r.id === range)!.pick(a)
@@ -88,7 +101,7 @@ export default function Dashboard() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by name…"
+            placeholder="Filter by name, or #tag…"
             className="glass-well min-w-[180px] flex-1 px-4 py-2 text-sm outline-none transition-colors placeholder:text-[var(--txt-3)] focus:border-[color-mix(in_oklab,var(--a1),transparent_55%)]"
           />
 
@@ -100,6 +113,28 @@ export default function Dashboard() {
             title="Matches counted over this window"
           />
         </div>
+
+        {groups && groups.length > 0 && (
+          <div className="flex flex-wrap items-center gap-[7px]">
+            <span className="label mr-1">groups</span>
+            {groups.map((g) => {
+              const on = group === g.id
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => setGroup(on ? null : g.id)}
+                  aria-pressed={on}
+                  className={`gchip ${on ? 'is-on' : ''}`}
+                  style={{ ['--c' as string]: g.color }}
+                >
+                  <i />
+                  {g.name}
+                  <span className="mono text-[11px] opacity-60">{(players ?? []).filter((p) => p.group?.id === g.id).length}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {players && players.length > 0 && (
           <GameFilter players={players} selected={selected} onChange={applyFilter} />
@@ -128,7 +163,8 @@ export default function Dashboard() {
 
       <aside className="space-y-4">
         <AddPlayer />
-        <AlertSettings />
+        {full && <GroupsPanel />}
+        {full && <BotSettingsPanel />}
         <HealthPanel />
         <Legend />
       </aside>
@@ -207,6 +243,11 @@ function PlayerLine({ player: p, pulsedAt, range }: { player: PlayerRow; pulsedA
           <span className="truncate text-[15px] font-bold tracking-[-0.02em]">{p.username_cc ?? p.username}</span>
           <StatusPill status={p.status} pulse={recentPulse} />
           {p.enabled === 0 && <span className="text-[11px] text-[var(--txt-3)]">(paused)</span>}
+          {p.group && <GroupChip group={p.group} />}
+          {p.inactive && p.status !== 'unknown' && <TagChip label="💤 inactive" color="#6b7386" />}
+          {p.tags.slice(0, 3).map((t) => (
+            <TagChip key={t} label={t} />
+          ))}
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-[var(--txt-3)]">

@@ -5,9 +5,11 @@ import { api } from './lib/api.ts'
 import { useStream } from './lib/useStream.ts'
 import { untilText, useNow } from './components/NextFetch.tsx'
 import { Ambient } from './components/Ambient.tsx'
+import { useMe } from './lib/useAccess.ts'
 
 export default function App() {
   const { connected } = useStream()
+  const me = useMe()
   const location = useLocation()
   const now = useNow()
   const [stuck, setStuck] = useState(false)
@@ -45,11 +47,11 @@ export default function App() {
               style={{ background: 'var(--grad)', boxShadow: '0 8px 24px -10px rgba(124,92,255,.9)' }}
             >
               <svg viewBox="0 0 32 32" aria-hidden className="h-5 w-5" fill="none" stroke="#0a0b10" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 23V9l14 14V9" />
+                <path d="M8 23V9l8 8 8-8v14" />
               </svg>
             </span>
             <span className="text-[15.5px] font-extrabold tracking-[-0.03em]">
-              ninja<em className="not-italic text-[var(--txt-3)]">Tracker</em>
+              mossad<em className="not-italic text-[var(--txt-3)]">Tracker</em>
             </span>
           </Link>
 
@@ -60,6 +62,11 @@ export default function App() {
             <Tab to="/stats" active={location.pathname.startsWith('/stats')}>
               Statistics
             </Tab>
+            {me?.access === 'full' && (
+              <Tab to="/audit" active={location.pathname.startsWith('/audit')}>
+                Audit
+              </Tab>
+            )}
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2.5">

@@ -6,6 +6,7 @@ import App from './App.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import PlayerPage from './pages/PlayerPage.tsx'
 import Stats from './pages/Stats.tsx'
+import Audit from './pages/Audit.tsx'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -15,12 +16,13 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
           <Routes>
             <Route element={<App />}>
               <Route index element={<Dashboard />} />
               <Route path="player/:uuid" element={<PlayerPage />} />
               <Route path="stats" element={<Stats />} />
+              <Route path="audit" element={<Audit />} />
             </Route>
           </Routes>
       </BrowserRouter>

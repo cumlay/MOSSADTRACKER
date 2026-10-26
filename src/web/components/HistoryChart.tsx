@@ -5,6 +5,7 @@ import { api } from '../lib/api.ts'
 import { date, num, plural, signed } from '../lib/format.ts'
 import { game } from '../../shared/games.ts'
 import { GameBadge } from './StatusPill.tsx'
+import { useFullAccess } from '../lib/useAccess.ts'
 import type { HistoryBucket, Period } from '../../shared/types.ts'
 
 const PERIODS: Array<{ id: Period; label: string }> = [
@@ -15,6 +16,7 @@ const PERIODS: Array<{ id: Period; label: string }> = [
 
 export function HistoryChart({ uuid }: { uuid: string }) {
   const qc = useQueryClient()
+  const full = useFullAccess()
   const [period, setPeriod] = useState<Period>('day')
   const rebuild = useMutation({
     mutationFn: () => api.backfill(6),
@@ -116,7 +118,7 @@ export function HistoryChart({ uuid }: { uuid: string }) {
           Tracking started {date(data.tracking_since)}. The {untracked} earlier{' '}
           {period === 'day' ? 'days' : period === 'week' ? 'weeks' : 'months'} are empty because nobody was
           watching then — not because they did not play.
-          {period === 'month' && (
+          {period === 'month' && full && (
             <button
               onClick={() => rebuild.mutate()}
               disabled={rebuild.isPending}

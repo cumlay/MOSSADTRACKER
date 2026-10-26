@@ -1,14 +1,27 @@
 import { config } from '../config.ts'
 import { all, get, j, lastInsertId, run, unj } from '../db.ts'
 import { NON_GAME_KEYS, game as gameInfo } from '../../shared/games.ts'
+import { getBotSettings } from '../settings.ts'
 import type { AllPayload, GamePayload } from '../hive/client.ts'
 
 const CORE = ['played', 'victories', 'xp', 'kills', 'deaths'] as const
 type CoreKey = (typeof CORE)[number]
 
+export interface ObservedChange {
+  game: string
+  matches: number
+  windowStart: number
+  windowEnd: number
+  delta: Record<string, number>
+  /** Counter values after this observation — what milestones are computed from. */
+  xp?: number
+  /** Consecutive wins before and after, when this observation could tell. */
+  streak?: { before: number; after: number }
+}
+
 export interface IngestResult {
   /** Games where a counter moved during this observation. */
-  changed: Array<{ game: string; matches: number; windowStart: number; windowEnd: number; delta: Record<string, number> }>
+  changed: ObservedChange[]
   /** True when we detected activity without knowing the game (quest_count moved). */
   unknownActivity: boolean
   /** Detections that opened a brand new session — what alerts fire on. */
@@ -17,6 +30,8 @@ export interface IngestResult {
 
 interface GameStateRow {
   last_observed_at: number
+  win_streak: number
+  best_streak: number
   last_changed_at: number | null
   played: number
   victories: number
@@ -109,11 +124,27 @@ function observeGame(uuid: string, gameId: string, payload: GamePayload, observe
     // Order-independent: an out-of-order observation must still produce a sane window.
     windowStart: Math.min(prev.last_observed_at, observedAt),
     windowEnd: Math.max(prev.last_observed_at, observedAt),
-    delta
+    delta,
+    xp: core.xp,
+    streak: updateStreak(uuid, gameId, prev, delta)
   }
 }
 
-function recordEvent(uuid: string, ev: { game: string; matches: number; windowStart: number; windowEnd: number; delta: Record<string, number> }): boolean {
+/**
+ * Win streak, as far as counters can tell. Hive does not expose streaks, but when every
+ * match between two checks was a win the streak certainly grew by that many; any loss in
+ * the batch resets it, since the order of wins and losses inside a batch is unknown.
+ */
+function updateStreak(uuid: string, gameId: string, prev: GameStateRow, delta: Record<string, number>) {
+  const played = delta.played ?? 0
+  if (played <= 0) return undefined
+  const before = prev.win_streak ?? 0
+  const after = (delta.victories ?? 0) >= played ? before + played : 0
+  run('UPDATE game_state SET win_streak = ?, best_streak = MAX(best_streak, ?) WHERE uuid = ? AND game = ?', [after, after, uuid, gameId])
+  return { before, after }
+}
+
+function recordEvent(uuid: string, ev: ObservedChange): boolean {
   run(
     'INSERT INTO activity_events (uuid, game, window_start, window_end, matches, delta) VALUES (?, ?, ?, ?, ?, ?)',
     [uuid, ev.game, ev.windowStart, ev.windowEnd, ev.matches, j(ev.delta)]
@@ -153,6 +184,8 @@ function attachToSession(uuid: string, eventId: number, ev: { game: string; matc
     j(ev.game === 'unknown' ? [] : [ev.game])
   ])
   run('UPDATE activity_events SET session_id = ? WHERE id = ?', [lastInsertId(), eventId])
+  // Playing again: the next long absence gets its own notice.
+  run('UPDATE players SET inactive_notified = 0 WHERE uuid = ?', [uuid])
   return true
 }
 
@@ -167,6 +200,7 @@ export function refreshPlayerState(uuid: string, now = Date.now()): void {
     [uuid]
   )
   const lastFetch = get<{ t: number }>('SELECT MAX(last_observed_at) AS t FROM game_state WHERE uuid = ?', [uuid])
+  const added = get<{ added_at: number }>('SELECT added_at FROM players WHERE uuid = ?', [uuid])
 
   /*
    * The *midpoint* of the last detection window, not its end.
@@ -178,7 +212,7 @@ export function refreshPlayerState(uuid: string, now = Date.now()): void {
    * estimate, and `last_seen_window_ms` carries the uncertainty around it.
    */
   const seenAt = latest ? Math.round((latest.window_start + latest.window_end) / 2) : null
-  const tier = pickTier(seenAt, now)
+  const tier = pickTier(seenAt, added?.added_at ?? now, now)
 
   run(
     'UPDATE players SET last_seen_at = ?, last_seen_window_ms = ?, last_game = ?, last_fetch_at = ?, tier = ? WHERE uuid = ?',
@@ -193,12 +227,17 @@ export function refreshPlayerState(uuid: string, now = Date.now()): void {
   )
 }
 
-function pickTier(lastSeenAt: number | null, now: number) {
-  if (lastSeenAt === null) return 'cold'
+/**
+ * Polling tier. Players quiet for longer than the inactivity threshold go dormant and
+ * are checked far less often; someone never seen at all counts from when they were added.
+ */
+function pickTier(lastSeenAt: number | null, addedAt: number, now: number) {
+  const dormantAfter = getBotSettings().inactive_days * 24 * 60 * 60 * 1000
+  if (lastSeenAt === null) return now - addedAt >= dormantAfter ? 'dormant' : 'cold'
   const age = now - lastSeenAt
   if (age <= config.scheduler.hotWindowMs) return 'hot'
   if (age <= config.scheduler.warmWindowMs) return 'warm'
-  if (age >= config.scheduler.dormantAfterMs) return 'dormant'
+  if (age >= dormantAfter) return 'dormant'
   return 'cold'
 }
 

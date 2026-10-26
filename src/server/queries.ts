@@ -1,6 +1,9 @@
 import { config } from './config.ts'
 import { all, get, unj } from './db.ts'
 import { nextFetchFor } from './tracker/scheduler.ts'
+import { getBotSettings } from './settings.ts'
+import { notesFor } from './services/organise.ts'
+import { playedWith, typicalHours } from './insights.ts'
 import type { ActivityEvent, HistoryBucket, HistoryResponse, Period, PlayerDetail, PlayerRow, Session, StatPoint, Status } from '../shared/types.ts'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -31,7 +34,16 @@ interface PlayerDbRow {
   first_played: number | null
   player_number: number | null
   profile: string | null
+  tags: string
+  group_id: number | null
+  group_name: string | null
+  group_color: string | null
+  group_channel: string | null
+  added_by: string | null
 }
+
+const PLAYER_SELECT = `SELECT p.*, g.name AS group_name, g.color AS group_color, g.channel_id AS group_channel
+  FROM players p LEFT JOIN player_groups g ON g.id = p.group_id`
 
 function toRow(p: PlayerDbRow, now: number): PlayerRow {
   const since = (ms: number) =>
@@ -45,6 +57,7 @@ function toRow(p: PlayerDbRow, now: number): PlayerRow {
   )
   const live = session && now - session.ended_at <= config.scheduler.sessionGapMs
   const next = nextFetchFor(p.uuid, p.tier, now)
+  const inactiveMs = getBotSettings().inactive_days * DAY
 
   return {
     uuid: p.uuid,
@@ -67,17 +80,24 @@ function toRow(p: PlayerDbRow, now: number): PlayerRow {
     matches_24h: since(DAY),
     matches_7d: since(7 * DAY),
     matches_30d: since(30 * DAY),
-    session: live ? { started_at: session.started_at, matches: session.matches, games: unj<string[]>(session.games, []) } : null
+    session: live ? { started_at: session.started_at, matches: session.matches, games: unj<string[]>(session.games, []) } : null,
+    tags: unj<string[]>(p.tags, []),
+    group:
+      p.group_id !== null && p.group_name !== null
+        ? { id: p.group_id, name: p.group_name, color: p.group_color ?? '#7c5cff', channel_id: p.group_channel }
+        : null,
+    added_by: p.added_by,
+    inactive: now - (p.last_seen_at ?? p.added_at) >= inactiveMs
   }
 }
 
 export function listPlayers(now = Date.now()): PlayerRow[] {
-  const rows = all<PlayerDbRow>('SELECT * FROM players ORDER BY COALESCE(last_seen_at, 0) DESC, username ASC')
+  const rows = all<PlayerDbRow>(`${PLAYER_SELECT} ORDER BY COALESCE(p.last_seen_at, 0) DESC, p.username ASC`)
   return rows.map((r) => toRow(r, now))
 }
 
 export function getPlayer(uuid: string, now = Date.now()): PlayerRow | null {
-  const row = get<PlayerDbRow>('SELECT * FROM players WHERE uuid = ?', [uuid])
+  const row = get<PlayerDbRow>(`${PLAYER_SELECT} WHERE p.uuid = ?`, [uuid])
   return row ? toRow(row, now) : null
 }
 
@@ -254,6 +274,8 @@ export function playerDetail(uuid: string, now = Date.now()): PlayerDetail | nul
     kills: number
     deaths: number
     extra: string
+    win_streak: number
+    best_streak: number
   }>("SELECT * FROM game_state WHERE uuid = ? AND game NOT IN ('main', 'unknown') ORDER BY played DESC", [uuid])
 
   const games = states.map((s) => {
@@ -271,7 +293,9 @@ export function playerDetail(uuid: string, now = Date.now()): PlayerDetail | nul
       game: s.game,
       latest,
       delta_24h: deltaSince(uuid, s.game, now - DAY),
-      delta_7d: deltaSince(uuid, s.game, now - 7 * DAY)
+      delta_7d: deltaSince(uuid, s.game, now - 7 * DAY),
+      win_streak: s.win_streak,
+      best_streak: s.best_streak
     }
   })
 
@@ -301,6 +325,9 @@ export function playerDetail(uuid: string, now = Date.now()): PlayerDetail | nul
     sessions,
     events,
     heatmap: heatmap(uuid, 60, now),
-    profile: raw?.profile ? unj<Record<string, unknown>>(raw.profile, {}) : null
+    profile: raw?.profile ? unj<Record<string, unknown>>(raw.profile, {}) : null,
+    notes: notesFor(uuid),
+    typical: typicalHours(uuid, now),
+    played_with: playedWith(uuid, 60, now)
   }
 }

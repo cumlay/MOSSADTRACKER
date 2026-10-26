@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 // The database path is read when the db module is first imported, so it has to be
 // pointed at a throwaway file before anything else loads.
-const dir = mkdtempSync(join(tmpdir(), 'ninjatracker-test-'))
+const dir = mkdtempSync(join(tmpdir(), 'mossadtracker-test-'))
 process.env.DB_PATH = join(dir, 'test.db')
 
 let db: typeof import('../src/server/db.ts')

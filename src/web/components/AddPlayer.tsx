@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api.ts'
+import { useMe } from '../lib/useAccess.ts'
 
 export function AddPlayer() {
   const qc = useQueryClient()
   const [term, setTerm] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const me = useMe()
 
   const query = term.trim()
   const { data: results, isFetching } = useQuery({
@@ -21,10 +23,13 @@ export function AddPlayer() {
       setTerm('')
       setError(null)
       void qc.invalidateQueries({ queryKey: ['players'] })
+      void qc.invalidateQueries({ queryKey: ['me'] })
     },
-    onError: (err: Error & { status?: number }) => {
+    onError: (err: Error & { status?: number; limit?: number }) => {
       setError(
-        err.status === 404
+        err.message === 'limit'
+          ? `You already have ${err.limit} players on the watchlist, your limit. Ask a Tracker admin to raise it.`
+          : err.status === 404
           ? 'No such player on The Hive.'
           : err.message === 'already_tracked'
             ? 'Already on the watchlist.'
@@ -37,7 +42,14 @@ export function AddPlayer() {
 
   return (
     <div className="glass card-pad p-5">
-      <div className="label mb-3">Track a player</div>
+      <div className="mb-3 flex items-baseline justify-between">
+        <div className="label">Track a player</div>
+        {me?.limit !== null && me?.limit !== undefined && (
+          <span className="mono text-[11px] text-[var(--txt-3)]" title="Players you added that are still tracked">
+            {me.added}/{me.limit} used
+          </span>
+        )}
+      </div>
 
       <div className="flex gap-2">
         <input

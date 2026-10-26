@@ -1,4 +1,4 @@
-# ninjaTracker
+# Mossad Tracker
 
 Web tracker for **The Hive** (Minecraft Bedrock): keep a watchlist of players and know, as precisely
 as the public API allows, **when they play and what they play** — plus a statistics view per game.
@@ -9,9 +9,9 @@ window. Everything else — sessions, habits, "live" status — is derived from 
 
 ## Quick start
 
-On Windows, double-click **ninjaTracker.bat**: it builds on first run, starts the tracker and opens
+On Windows, double-click **mossadTracker.bat**: it builds on first run, starts the tracker and opens
 the page in your default browser once the server actually answers. Closing the window stops it.
-Run `ninjaTracker.bat rebuild` to force a fresh build after changing the code.
+Run `mossadTracker.bat rebuild` to force a fresh build after changing the code.
 
 ```bash
 npm install
@@ -79,37 +79,47 @@ roughly 18 MB a day for 13 players.
 
 ## Alerts
 
-Set a Discord webhook in the Alerts panel and switch it on: ninjaTracker posts when a tracked player
-**starts** a session — not on every detection. Individual players can be muted from their own page.
+The Discord bot (below) posts when a tracked player **starts** a session — not on every detection. Individual players can be muted from their own page.
 The message states the uncertainty window rather than pretending to a precise timestamp.
 
 ## Discord bot
 
-Manages the watchlist from Discord. It runs **inside the API process** — a separate process would
-open the same SQLite file and the two would block each other — and calls the same service functions
-as the HTTP routes, so both stay consistent.
+Manages the watchlist from Discord and posts an embed when a tracked player starts playing on Hive.
+It runs **inside the API process** — a separate process would open the same SQLite file and the two
+would block each other — and calls the same service functions as the HTTP routes, so both stay
+consistent.
 
 ```
-.addTracker player:"tuff corlay"      start tracking someone
-.removeTracker player:"tuff corlay"   stop tracking and delete their history
-.trackerList                          show the watchlist with live status
-.trackerHelp                          the three lines above
+/track player:<gamertag>              start tracking someone (suggestions from Hive search)
+/untrack player:<tracked player>      stop tracking and delete their history
+/alerts player:<tracked player> on|off   mute or unmute their alerts
+/watchlist [group:]                   show the watchlist with live status
+/online                               who is in a session right now
+/stats player: game: [period:]        stat card for one game
+/sessions player:                     last sessions, usual hours, who they play with
+/compare player1: player2: [game:]    two players side by side
+/report [period:]                     most active, longest session, level-ups
+/link code: · /unlink                 link a website account (its permissions apply in Discord)
 ```
 
-Quotes are optional (`.addTracker Lizqfx`), and a bare name keeps its spaces
-(`.addTracker tuff corlay`) since Bedrock gamertags contain them. Removal matches an exact name, a
-UUID, or an unambiguous partial — an ambiguous one is refused rather than deleting the wrong player.
+Alerts (each switchable in the *Discord bot* panel): online, session summary, milestones (5th
+levels, prestige, win streaks), inactivity, daily and weekly reports. Groups can route their alerts
+to their own channel. Every change to the watchlist, from either side, lands in the **Audit** page.
 
-Setup:
+`/track` suggests Hive players from 4 typed characters (cached, and skipped when the scheduler needs
+the global budget); `/untrack` and `/alerts` suggest from the local watchlist without calling Hive.
+Who may change the watchlist comes from the website account linked with `/link` (Tracker = all,
+Tracker user = `/track` up to its limit); members who never linked need *Manage Server*.
 
-1. Create an application at <https://discord.com/developers/applications>, add a bot, copy the token.
-2. In **Bot → Privileged Gateway Intents**, enable **MESSAGE CONTENT**. Without it Discord delivers
-   every message with an empty body and no command will ever match.
-3. Invite it with the *Read Messages*, *Send Messages* and *Embed Links* permissions.
-4. Copy `.env.example` to `.env` and set `DISCORD_TOKEN`. Optionally set `DISCORD_CHANNEL_ID` to lock
-   the bot to one channel, or `DISCORD_PREFIX` to change `.`.
+**Online alerts.** When a tracked player starts a Hive session, the bot posts an embed (game,
+matches, detection window in each reader's timezone) in `DISCORD_ALERT_CHANNEL_ID`, or in
+`DISCORD_CHANNEL_ID` if only that one is set. It honours the per-player mute.
 
-No token means the bot simply never starts; everything else runs as usual.
+The old `.addTracker` text commands still exist behind `DISCORD_PREFIX`, off by default because they
+need the privileged MESSAGE CONTENT intent. No token means the bot simply never starts.
+
+Setup, step by step — developer portal, invite link, channels, permissions, troubleshooting:
+[`docs/discord-bot.md`](docs/discord-bot.md).
 
 ## Rebuilding history
 

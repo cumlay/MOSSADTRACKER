@@ -7,11 +7,15 @@ import { GameBadge, GameTile, StatusPill } from '../components/StatusPill.tsx'
 import { Heatmap } from '../components/Heatmap.tsx'
 import { HistoryChart } from '../components/HistoryChart.tsx'
 import { NextFetch } from '../components/NextFetch.tsx'
+import { useFullAccess } from '../lib/useAccess.ts'
+import { Timeline } from '../components/Timeline.tsx'
+import { GroupChip, Insights, Notes, Organise, TagChip } from '../components/PlayerExtras.tsx'
 
 export default function PlayerPage() {
   const { uuid = '' } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const full = useFullAccess()
 
   const { data, isLoading } = useQuery({
     queryKey: ['player', uuid],
@@ -42,7 +46,7 @@ export default function PlayerPage() {
   if (isLoading) return <p className="text-sm text-[var(--txt-3)]">Loading…</p>
   if (!data) return <p className="text-sm text-[var(--txt-3)]">This player is not tracked.</p>
 
-  const { player: p, games, sessions, events, heatmap, profile } = data
+  const { player: p, games, sessions, events, heatmap, profile, notes, typical, played_with } = data
   const played = games.filter((g) => g.latest.played > 0)
   const title = typeof profile?.equipped_hub_title === 'string' ? stripColors(profile.equipped_hub_title) : null
 
@@ -67,7 +71,17 @@ export default function PlayerPage() {
             {title && <span className="mr-2 text-[var(--txt-2)]">{title}</span>}
             {p.player_number !== null && <span>player #{num(p.player_number)} · </span>}
             {p.first_played && <span>joined {date(p.first_played * 1000)}</span>}
+            {p.added_by && <span> · added by {p.added_by}</span>}
           </div>
+          {(p.group || p.tags.length > 0 || p.inactive) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {p.group && <GroupChip group={p.group} />}
+              {p.inactive && <TagChip label="💤 inactive" color="#6b7386" />}
+              {p.tags.map((t) => (
+                <TagChip key={t} label={t} />
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-6 text-sm">
@@ -88,20 +102,31 @@ export default function PlayerPage() {
           <NextFetch dueAt={p.next_fetch_at} lastAt={p.last_fetch_at} bucket={p.next_fetch_bucket} size={40} wide />
         </div>
 
-        <div className="ml-auto flex gap-2">
-          <button className="btn btn--ghost" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-            {refresh.isPending ? '…' : 'Refresh'}
-          </button>
-          <button className="btn btn--ghost" onClick={() => toggleNotify.mutate(p.notify === 0)}>
-            {p.notify ? 'Alerts on' : 'Alerts off'}
-          </button>
-          <button className="btn btn--ghost" onClick={() => toggle.mutate(p.enabled === 0)}>
-            {p.enabled ? 'Pause' : 'Resume'}
-          </button>
-          <button className="btn btn--ghost" style={{ color: 'var(--bad)' }} onClick={() => remove.mutate()}>
-            Remove
-          </button>
+        <div className="ml-auto flex flex-wrap gap-2">
+          <a className="btn btn--ghost" href={api.exportUrl(uuid, 'sessions')} download>
+            Sessions CSV
+          </a>
+          <a className="btn btn--ghost" href={api.exportUrl(uuid, 'stats')} download>
+            Stats CSV
+          </a>
         </div>
+
+        {full && (
+          <div className="flex gap-2">
+            <button className="btn btn--ghost" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+              {refresh.isPending ? '…' : 'Refresh'}
+            </button>
+            <button className="btn btn--ghost" onClick={() => toggleNotify.mutate(p.notify === 0)}>
+              {p.notify ? 'Alerts on' : 'Alerts off'}
+            </button>
+            <button className="btn btn--ghost" onClick={() => toggle.mutate(p.enabled === 0)}>
+              {p.enabled ? 'Pause' : 'Resume'}
+            </button>
+            <button className="btn btn--ghost" style={{ color: 'var(--bad)' }} onClick={() => remove.mutate()}>
+              Remove
+            </button>
+          </div>
+        )}
       </div>
 
       {refresh.isError && (
@@ -113,6 +138,8 @@ export default function PlayerPage() {
       <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
         <div className="space-y-5">
           <HistoryChart uuid={uuid} />
+
+          <Timeline uuid={uuid} />
 
           <section className="glass card-pad p-5">
             <div className="label mb-3">Play habits (last 60 days)</div>
@@ -129,6 +156,7 @@ export default function PlayerPage() {
                     <th className="pb-2 text-right font-medium">Played</th>
                     <th className="pb-2 text-right font-medium">Wins</th>
                     <th className="pb-2 text-right font-medium">K/D</th>
+                    <th className="pb-2 text-right font-medium" title="Consecutive wins seen by the tracker: current / best">Streak</th>
                     <th className="pb-2 text-right font-medium">24 h</th>
                     <th className="pb-2 text-right font-medium">7 d</th>
                   </tr>
@@ -150,6 +178,16 @@ export default function PlayerPage() {
                         <td className="py-2 text-right mono">{num(g.latest.played)}</td>
                         <td className="py-2 text-right mono text-[var(--txt-2)]">{num(g.latest.victories)}</td>
                         <td className="py-2 text-right mono text-[var(--txt-2)]">{kd}</td>
+                        <td className="py-2 text-right mono text-[var(--txt-2)]">
+                          {g.best_streak > 0 ? (
+                            <>
+                              {g.win_streak}
+                              <span className="text-[var(--txt-3)]">/{g.best_streak}</span>
+                            </>
+                          ) : (
+                            <span className="text-[var(--txt-3)]">—</span>
+                          )}
+                        </td>
                         <td className="py-2 text-right mono text-[var(--ok)]">
                           {g.delta_24h?.played ? signed(g.delta_24h.played) : <span className="text-[var(--txt-3)]">—</span>}
                         </td>
@@ -166,6 +204,10 @@ export default function PlayerPage() {
         </div>
 
         <div className="space-y-5">
+          <Insights typical={typical} mates={played_with} />
+          <Organise player={p} editable={full} />
+          <Notes uuid={uuid} notes={notes} editable={full} />
+
           <section className="glass card-pad p-5">
             <div className="label mb-3">Sessions</div>
             {sessions.length === 0 && <p className="text-xs text-[var(--txt-3)]">No session recorded yet.</p>}

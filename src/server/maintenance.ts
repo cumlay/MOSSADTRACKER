@@ -90,7 +90,8 @@ export function rebuildSessions(gapMs: number): { sessions: number; events: numb
     }
 
     const games = new Set<string>(ev.game === 'unknown' ? [] : [ev.game])
-    run('INSERT INTO sessions (uuid, started_at, ended_at, matches, games) VALUES (?, ?, ?, ?, ?)', [
+    // summary_sent = 1: a rebuild must not re-announce sessions that ended long ago.
+    run('INSERT INTO sessions (uuid, started_at, ended_at, matches, games, summary_sent) VALUES (?, ?, ?, ?, ?, 1)', [
       ev.uuid,
       ev.window_start,
       ev.window_end,
