@@ -144,7 +144,12 @@ function updateStreak(uuid: string, gameId: string, prev: GameStateRow, delta: R
   return { before, after }
 }
 
-function recordEvent(uuid: string, ev: ObservedChange): boolean {
+/**
+ * Writes one observation and attaches it to a session. Exported so a direct
+ * observation (a player seen in the lobby by the in-game client) can enter the same
+ * pipeline as a counter delta.
+ */
+export function recordEvent(uuid: string, ev: ObservedChange): boolean {
   run(
     'INSERT INTO activity_events (uuid, game, window_start, window_end, matches, delta) VALUES (?, ?, ?, ?, ?, ?)',
     [uuid, ev.game, ev.windowStart, ev.windowEnd, ev.matches, j(ev.delta)]

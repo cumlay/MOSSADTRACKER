@@ -4,7 +4,18 @@ import { nextFetchFor } from './tracker/scheduler.ts'
 import { getBotSettings } from './settings.ts'
 import { notesFor } from './services/organise.ts'
 import { playedWith, typicalHours } from './insights.ts'
-import type { ActivityEvent, HistoryBucket, HistoryResponse, Period, PlayerDetail, PlayerRow, Session, StatPoint, Status } from '../shared/types.ts'
+import type {
+  ActivityEvent,
+  HistoryBucket,
+  HistoryResponse,
+  Period,
+  PlayerDetail,
+  PlayerRow,
+  Session,
+  Sighting,
+  StatPoint,
+  Status
+} from '../shared/types.ts'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -44,6 +55,16 @@ interface PlayerDbRow {
 
 const PLAYER_SELECT = `SELECT p.*, g.name AS group_name, g.color AS group_color, g.channel_id AS group_channel
   FROM players p LEFT JOIN player_groups g ON g.id = p.group_id`
+
+/** The live sighting of one player, if the in-game client saw them just now. */
+function lobbyOf(uuid: string, now: number): Sighting | null {
+  return (
+    get<Sighting>('SELECT uuid, seen_at, server, game, mode FROM sightings WHERE uuid = ? AND seen_at > ? ORDER BY seen_at DESC LIMIT 1', [
+      uuid,
+      now - config.scheduler.lobbyWindowMs
+    ]) ?? null
+  )
+}
 
 function toRow(p: PlayerDbRow, now: number): PlayerRow {
   const since = (ms: number) =>
@@ -87,9 +108,34 @@ function toRow(p: PlayerDbRow, now: number): PlayerRow {
         ? { id: p.group_id, name: p.group_name, color: p.group_color ?? '#7c5cff', channel_id: p.group_channel }
         : null,
     added_by: p.added_by,
-    inactive: now - (p.last_seen_at ?? p.added_at) >= inactiveMs
+    inactive: now - (p.last_seen_at ?? p.added_at) >= inactiveMs,
+    in_lobby: lobbyOf(p.uuid, now)
   }
 }
+
+/** Sightings recent enough to mean "in a lobby right now", newest first. */
+export function recentSightings(now = Date.now()): Sighting[] {
+  return all<{ uuid: string; seen_at: number; server: string | null; game: string | null; mode: string | null }>(
+    'SELECT uuid, seen_at, server, game, mode FROM sightings WHERE seen_at > ? ORDER BY seen_at DESC',
+    [now - config.scheduler.lobbyWindowMs]
+  ).map((s) => ({ uuid: s.uuid, seen_at: s.seen_at, server: s.server, game: s.game, mode: s.mode }))
+}
+
+/** uuid -> most recent sighting, for decorating the watchlist. */
+export function sightingsByPlayer(now = Date.now()): Map<string, Sighting> {
+  const map = new Map<string, Sighting>()
+  for (const s of recentSightings(now)) if (!map.has(s.uuid)) map.set(s.uuid, s)
+  return map
+}
+
+/** The last few sightings of one player, for their page. */
+export function sightingsFor(uuid: string, limit = 20): Sighting[] {
+  return all<{ uuid: string; seen_at: number; server: string | null; game: string | null; mode: string | null }>(
+    'SELECT uuid, seen_at, server, game, mode FROM sightings WHERE uuid = ? ORDER BY seen_at DESC LIMIT ?',
+    [uuid, limit]
+  )
+}
+
 
 export function listPlayers(now = Date.now()): PlayerRow[] {
   const rows = all<PlayerDbRow>(`${PLAYER_SELECT} ORDER BY COALESCE(p.last_seen_at, 0) DESC, p.username ASC`)

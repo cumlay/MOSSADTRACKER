@@ -85,6 +85,21 @@ CREATE TABLE IF NOT EXISTS activity_events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_player ON activity_events (uuid, window_end DESC);
 
+-- Players seen in the same Hive lobby as the in-game client.
+-- Unlike an activity event, a sighting has no uncertainty: it is a direct observation
+-- at a known instant, on a known server.
+CREATE TABLE IF NOT EXISTS sightings (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  uuid      TEXT NOT NULL,
+  seen_at   INTEGER NOT NULL,
+  server    TEXT,
+  game      TEXT,
+  mode      TEXT,
+  reporter  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sightings_player ON sightings (uuid, seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sightings_time ON sightings (seen_at DESC);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   uuid       TEXT NOT NULL,

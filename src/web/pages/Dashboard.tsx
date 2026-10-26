@@ -242,6 +242,8 @@ function PlayerLine({ player: p, pulsedAt, range }: { player: PlayerRow; pulsedA
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-[15px] font-bold tracking-[-0.02em]">{p.username_cc ?? p.username}</span>
           <StatusPill status={p.status} pulse={recentPulse} />
+          {/* Seen by the in-game client: a direct observation, so it outranks the status pill. */}
+          {p.in_lobby && <LobbyBadge server={p.in_lobby.server} />}
           {p.enabled === 0 && <span className="text-[11px] text-[var(--txt-3)]">(paused)</span>}
           {p.group && <GroupChip group={p.group} />}
           {p.inactive && p.status !== 'unknown' && <TagChip label="💤 inactive" color="#6b7386" />}
@@ -311,5 +313,29 @@ function Legend() {
         7 minutes; quiet ones every 20.
       </p>
     </div>
+  )
+}
+
+/**
+ * "In your lobby", reported by the in-game client.
+ *
+ * Deliberately louder than the status pill: everything else on this row is inferred
+ * from counters minutes after the fact, this one means they are standing next to you
+ * right now.
+ */
+function LobbyBadge({ server }: { server: string | null }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[3px] text-[11px] font-bold"
+      style={{
+        color: '#08090d',
+        background: 'var(--grad)',
+        boxShadow: '0 0 18px -4px rgba(124,92,255,.9)'
+      }}
+      title={server ? `Seen on ${server}` : 'Seen in your lobby'}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-[#08090d]" />
+      in your lobby
+    </span>
   )
 }

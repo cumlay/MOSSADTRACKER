@@ -133,3 +133,26 @@ export function reportEmbed(r: Report, title: string): Embed {
   }
   return { title, description: `${t(r.from, 'f')} → ${t(r.to, 'f')}`, color: ACCENT, fields, footer: { text: BRAND } }
 }
+
+/**
+ * A tracked player standing in the same lobby as the in-game client.
+ *
+ * Unlike every other alert, this one carries no uncertainty wording: the client read
+ * the server's own player list, so the moment and the server are exact.
+ */
+export function sightingEmbed(
+  name: string,
+  gameId: string | null,
+  server: string | null,
+  mode: string | null,
+  at: number
+): Embed {
+  const where = gameId ? game(gameId).name + (mode ? ` ${mode}` : '') : (mode ?? 'a Hive lobby')
+  return {
+    title: `${name} is in your lobby`,
+    description: `**${where}**${server ? ` · \`${server}\`` : ''} — seen ${t(at, 'R')}`,
+    color: colorOf(gameId ?? undefined),
+    footer: { text: `${BRAND} · in-game` },
+    timestamp: new Date(at).toISOString()
+  }
+}

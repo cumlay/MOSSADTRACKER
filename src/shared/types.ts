@@ -40,6 +40,8 @@ export interface PlayerRow extends Player {
   added_by: string | null
   /** Not seen for longer than the inactivity threshold. */
   inactive: boolean
+  /** Set while the in-game client has this player in its lobby right now. */
+  in_lobby: Sighting | null
 }
 
 export interface Group {
@@ -218,4 +220,23 @@ export interface SchedulerStatus {
   lifetime: { requests: number; errors: number; since: number }
   next_fetches: Array<{ uuid: string; username: string; bucket: string; due_at: number }>
   recent_fetches: Array<{ uuid: string | null; bucket: string; at: number; status: number; ms: number }>
+}
+
+/** A tracked player seen in the same Hive lobby as the in-game client. */
+export interface Sighting {
+  uuid: string
+  seen_at: number
+  /** Hive sub-server, e.g. "BED-DUOS12". */
+  server: string | null
+  game: string | null
+  mode: string | null
+}
+
+/** What the in-game client posts: the lobby it is in, and who is in it. */
+export interface SightingReport {
+  server?: string
+  game?: string
+  mode?: string
+  reporter?: string
+  players: Array<{ uuid?: string; name?: string }>
 }

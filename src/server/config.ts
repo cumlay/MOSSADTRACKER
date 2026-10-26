@@ -17,6 +17,16 @@ export const config = {
   dbPath: process.env.DB_PATH ?? resolve(root, 'data/tracker.db'),
   webDist: resolve(root, 'dist/web'),
 
+  /**
+   * Shared secret the in-game client proves itself with.
+   *
+   * nginx overwrites the access headers on every request, so a program outside the
+   * browser cannot be granted access that way; it carries this token instead. Empty
+   * means the in-game routes stay closed, exactly like an absent Discord token means
+   * no bot.
+   */
+  clientToken: process.env.CLIENT_TOKEN ?? '',
+
   hive: {
     base: 'https://api.playhive.com',
     userAgent: 'mossadTracker/0.1 (+player activity tracker)',
@@ -42,6 +52,8 @@ export const config = {
     dormantIntervalMs: 2 * 60 * 60 * 1000,
     /** Gap that closes a session. */
     sessionGapMs: 30 * 60 * 1000,
+    /** How long a lobby sighting keeps the "in your lobby" badge lit. */
+    lobbyWindowMs: 3 * 60 * 1000,
     /** An activity window ending less than this ago means "live". */
     liveWindowMs: 15 * 60 * 1000
   }

@@ -20,7 +20,8 @@ import { statCard } from './stats.ts'
 import { getSettings, saveSettings, sendTestAlert } from './notifier.ts'
 import { pruneSnapshots, purgeRetiredGames, refreshAllPlayers, SNAPSHOT_RETENTION_MS } from './maintenance.ts'
 import { backfillMonthly, scheduleBackfill } from './tracker/backfill.ts'
-import type { SearchResult } from '../shared/types.ts'
+import { pruneSightings, recordSightings, roster } from './sightings.ts'
+import type { SearchResult, SightingReport } from '../shared/types.ts'
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'warn' } })
 
@@ -55,7 +56,31 @@ const accessOf = (req: FastifyRequest): Access => (req.headers['x-tracker-access
 /** What a "user" may change: adding a player, nothing else. */
 const USER_WRITES = new Set(['POST /api/players'])
 
+/**
+ * The in-game client is not a browser session, so nginx cannot vouch for it: it proves
+ * itself with the shared token instead. Compared in constant time, and only ever
+ * granting the two `/api/client/*` routes — never the rest of the API.
+ */
+const clientAuthorised = (req: FastifyRequest): boolean => {
+  const expected = config.clientToken
+  if (!expected) return false
+  const header = req.headers.authorization
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) return false
+  const given = header.slice(7)
+  if (given.length !== expected.length) return false
+  let diff = 0
+  for (let i = 0; i < expected.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i)
+  return diff === 0
+}
+
+const isClientRoute = (req: FastifyRequest): boolean => req.url.startsWith('/api/client/')
+
 app.addHook('onRequest', async (req, reply) => {
+  if (isClientRoute(req)) {
+    if (!config.clientToken) return reply.code(404).send({ error: 'client_link_disabled' })
+    if (!clientAuthorised(req)) return reply.code(401).send({ error: 'unauthorized' })
+    return
+  }
   if (req.method === 'GET' || req.method === 'HEAD' || accessOf(req) === 'full') return
   if (!USER_WRITES.has(`${req.method} ${req.routeOptions.url}`)) return reply.code(403).send({ error: 'forbidden' })
 })
@@ -200,6 +225,29 @@ app.get<{ Params: { uuid: string; game: string }; Querystring: { period?: string
   }
 )
 
+/* ------------------------------------------------- in-game client (Oriel) */
+
+/** The watchlist, as little of it as the client needs to match a lobby. */
+app.get('/api/client/roster', async () => ({ players: roster(), window_ms: config.scheduler.lobbyWindowMs }))
+
+/**
+ * The lobby the client is standing in. It reports everyone it sees; the server decides
+ * what is new, so a client that reports every few seconds costs one row per arrival.
+ */
+app.post<{ Body: SightingReport }>('/api/client/sighting', async (req, reply) => {
+  const body = req.body
+  if (!body || !Array.isArray(body.players)) return reply.code(400).send({ error: 'players_required' })
+  if (body.players.length > 64) return reply.code(400).send({ error: 'too_many_players' })
+
+  const result = await recordSightings(body.players, {
+    server: body.server,
+    game: body.game,
+    mode: body.mode,
+    reporter: body.reporter
+  })
+  return { ok: true, ...result }
+})
+
 /* ------------------------------------------------------------------- search */
 
 app.get<{ Querystring: { q?: string } }>('/api/search', async (req, reply) => {
@@ -332,6 +380,7 @@ const purged = purgeRetiredGames()
 if (Object.keys(purged).length > 0) console.log('[maintenance] purged retired games', purged)
 
 const logPrune = () => {
+  pruneSightings()
   const n = pruneSnapshots()
   if (n > 0) console.log(`[maintenance] dropped ${n} raw snapshots past retention`)
 }

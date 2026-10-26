@@ -32,6 +32,12 @@ export function useStream(): StreamState {
       setPulses((p) => ({ ...p, [uuid]: Date.now() }))
       refresh(uuid)
     })
+    // A lobby sighting changes a row without any counter moving.
+    source.addEventListener('sighting', (ev) => {
+      const { uuid } = JSON.parse((ev as MessageEvent).data) as { uuid: string }
+      setPulses((p) => ({ ...p, [uuid]: Date.now() }))
+      refresh(uuid)
+    })
     source.addEventListener('removed', () => {
       void qc.invalidateQueries({ queryKey: ['me'] })
       refresh()

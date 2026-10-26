@@ -121,6 +121,13 @@ need the privileged MESSAGE CONTENT intent. No token means the bot simply never 
 Setup, step by step — developer portal, invite link, channels, permissions, troubleshooting:
 [`docs/discord-bot.md`](docs/discord-bot.md).
 
+## In-game link
+
+A headless feature of the Oriel client reports tracked players standing in the same Hive lobby as
+you. A sighting is a direct observation, so it enters the history as a zero-width event: the
+player's status becomes exact instead of estimated. Setup and limits:
+[`docs/in-game-link.md`](docs/in-game-link.md).
+
 ## Rebuilding history
 
 Monthly leaderboards carry no per-player rate limit, and one page covers the top 100 at once, so
@@ -137,6 +144,8 @@ the UI shows that as missing data, never as "did not play".
 
 - [`docs/hive-api.md`](docs/hive-api.md) — full API reference with the **measured** rate limits, all
   game IDs and stat fields, and the v2/API-key situation.
+- [`docs/in-game-link.md`](docs/in-game-link.md) — the in-game client: what a sighting proves,
+  how to set it up, what it cannot see.
 - [`docs/tracking-design.md`](docs/tracking-design.md) — why the design looks like this, what the
   detection can and cannot see.
 - [`docs/hive-openapi.json`](docs/hive-openapi.json) — upstream OpenAPI spec (snapshot).
